@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=Audio Writer
+GenericName=Deepin Audio Writer
+Comment=Deepin Audio Writer
+Exec=deepin-audio-writer
+Type=Application
+Categories=Utility;
+StartupNotify=true
+Hidden=false

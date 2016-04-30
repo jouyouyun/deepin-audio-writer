@@ -1,0 +1,14 @@
+*.*.swp
+Planner
+Test
+test-*
+test_*
+_*
+*.*~
+.#*
+.test
+*/*.test
+debian
+debian/
+out/
+gopath/
