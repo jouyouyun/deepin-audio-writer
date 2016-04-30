@@ -22,9 +22,9 @@ const (
 	audioDest = "com.deepin.daemon.Audio"
 	audioPath = "/com/deepin/daemon/Audio"
 
-	dbusDest = "com.deepin.helper.AudioSaver"
-	dbusPath = "/com/deepin/helper/AudioSaver"
-	dbusIFC  = "com.deepin.helper.AudioSaver"
+	dbusDest = "com.deepin.helper.AudioWriter"
+	dbusPath = "/com/deepin/helper/AudioWriter"
+	dbusIFC  = "com.deepin.helper.AudioWriter"
 )
 
 type Manager struct {
