@@ -76,13 +76,25 @@ func (info *AudioInfo) Update() *AudioInfo {
 	return v
 }
 
-func (info *AudioInfo) Apply() {
+func trySetProfile(profile string) error {
 	cards := ctx.GetCardList()
-	if len(cards) != 0 {
-		cards[0].SetProfile(info.ActiveProfile)
-		logger.Infof("SetProfile %v on %v\n", info.ActiveProfile, cards[0])
-	} else {
-		logger.Error("Can't find any cards")
+	for _, c := range cards {
+		for _, pf := range c.Profiles {
+			if pf.Name == profile {
+				c.SetProfile(profile)
+				logger.Infof("SetProfile %v on %v\n", profile, c)
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("Can't find any cards %v contain the profile %v", cards, profile)
+}
+
+func (info *AudioInfo) Apply() {
+	err := trySetProfile(info.ActiveProfile)
+	if err != nil {
+		logger.Error(err)
+		return
 	}
 
 	audioObj.SetDefaultSink(info.ActiveSink)
