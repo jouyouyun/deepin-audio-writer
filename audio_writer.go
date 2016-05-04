@@ -12,8 +12,8 @@ import (
 	"pkg.linuxdeepin.com/lib/glib-2.0"
 	"pkg.linuxdeepin.com/lib/log"
 	"pkg.linuxdeepin.com/lib/pulse"
-	"sort"
 	"sync"
+	"time"
 )
 
 const (
@@ -40,7 +40,7 @@ func (*Manager) GetDBusInfo() dbus.DBusInfo {
 }
 
 type AudioInfo struct {
-	ActiveProfile    string
+	ActiveProfiles   map[string]string //map[cardName]ProfileName
 	ActiveSink       string
 	ActiveSinkPort   string
 	ActiveSource     string
@@ -76,26 +76,15 @@ func (info *AudioInfo) Update() *AudioInfo {
 	return v
 }
 
-func trySetProfile(profile string) error {
-	cards := ctx.GetCardList()
-	for _, c := range cards {
-		for _, pf := range c.Profiles {
-			if pf.Name == profile {
-				c.SetProfile(profile)
-				logger.Infof("SetProfile %v on %v\n", profile, c)
-				return nil
-			}
+func (info *AudioInfo) Apply() {
+	for _, c := range ctx.GetCardList() {
+		if v, ok := info.ActiveProfiles[c.Name]; ok {
+			c.SetProfile(v)
+			logger.Infof("SetProfile %v on %v\n", v, c)
 		}
 	}
-	return fmt.Errorf("Can't find any cards %v contain the profile %v", cards, profile)
-}
-
-func (info *AudioInfo) Apply() {
-	err := trySetProfile(info.ActiveProfile)
-	if err != nil {
-		logger.Error(err)
-		return
-	}
+	// NOTE: wait for profile configuring applied.
+	<-time.After(time.Second * 1)
 
 	audioObj.SetDefaultSink(info.ActiveSink)
 	sink := getDefaultSink()
@@ -115,8 +104,16 @@ func (info *AudioInfo) Apply() {
 }
 
 func (info *AudioInfo) Equal(v *AudioInfo) bool {
-	if info.ActiveProfile != v.ActiveProfile ||
-		info.ActiveSink != v.ActiveSink ||
+	if len(info.ActiveProfiles) != len(v.ActiveProfiles) {
+		return false
+	}
+	for _, p := range info.ActiveProfiles {
+		if v.ActiveProfiles[p] != p {
+			return false
+		}
+	}
+
+	if info.ActiveSink != v.ActiveSink ||
 		info.ActiveSinkPort != v.ActiveSinkPort ||
 		info.ActiveSource != v.ActiveSource ||
 		info.ActiveSourcePort != v.ActiveSourcePort ||
@@ -140,6 +137,7 @@ func readConfig() (*AudioInfo, error) {
 	var reader = bytes.NewBuffer(content)
 	dec := json.NewDecoder(reader)
 	var info AudioInfo
+	info.ActiveProfiles = make(map[string]string)
 	err = dec.Decode(&info)
 	if err != nil {
 		return nil, err
@@ -174,9 +172,10 @@ func saveConfig(info *AudioInfo) error {
 
 func getCurrentAudioInfo() *AudioInfo {
 	var info AudioInfo
-	cards := ctx.GetCardList()
-	if len(cards) != 0 {
-		info.ActiveProfile = cards[0].ActiveProfile.Name
+	info.ActiveProfiles = make(map[string]string)
+
+	for _, card := range ctx.GetCardList() {
+		info.ActiveProfiles[card.Name] = card.ActiveProfile.Name
 	}
 
 	sink := getDefaultSink()
@@ -231,22 +230,22 @@ func (info *AudioInfo) PrintAudioInfo() {
 }
 
 func (info *AudioInfo) initProfile() bool {
-	cards := ctx.GetCardList()
-	if len(cards) == 0 {
-		return false
-	}
+	// cards := ctx.GetCardList()
+	// if len(cards) == 0 {
+	// 	return false
+	// }
 
-	profiles := cProfileInfos(cards[0].Profiles)
-	if len(profiles) == 0 {
-		return false
-	}
-	sort.Sort(profiles)
-	if profiles[0].Name == info.ActiveProfile {
-		return false
-	}
+	// profiles := cProfileInfos(cards[0].Profiles)
+	// if len(profiles) == 0 {
+	// 	return false
+	// }
+	// sort.Sort(profiles)
+	// if profiles[0].Name == info.ActiveProfile {
+	// 	return false
+	// }
 
-	logger.Info("Init profile:", profiles[0].Name)
-	cards[0].SetProfile(profiles[0].Name)
+	// logger.Info("Init profile:", profiles[0].Name)
+	//cards[0].SetProfile(profiles[0].Name)
 	return true
 }
 
@@ -262,7 +261,7 @@ func main() {
 	if err != nil {
 		logger.Warning("Read audio helper config failed:", err)
 		info = getCurrentAudioInfo()
-		info.initProfile()
+		//info.initProfile()
 		saveConfig(info)
 	} else {
 		info.Apply()
