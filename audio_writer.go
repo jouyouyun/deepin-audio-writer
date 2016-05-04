@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	audioHelperFile = ".config/deepin_audio_helper.conf"
+	ConfigPath = "/home/deepin/.config/deepin_audio_helper.conf"
 
 	audioDest = "com.deepin.daemon.Audio"
 	audioPath = "/com/deepin/daemon/Audio"
@@ -128,8 +128,7 @@ func readConfig() (*AudioInfo, error) {
 	locker.Lock()
 	defer locker.Unlock()
 
-	var file = path.Join(os.Getenv("HOME"), audioHelperFile)
-	content, err := ioutil.ReadFile(file)
+	content, err := ioutil.ReadFile(ConfigPath)
 	if err != nil {
 		return nil, err
 	}
@@ -161,13 +160,12 @@ func saveConfig(info *AudioInfo) error {
 		return err
 	}
 
-	var file = path.Join(os.Getenv("HOME"), audioHelperFile)
-	err = os.MkdirAll(path.Dir(file), 0755)
+	err = os.MkdirAll(path.Dir(ConfigPath), 0755)
 	if err != nil {
 		return err
 	}
 
-	return ioutil.WriteFile(file, writer.Bytes(), 0644)
+	return ioutil.WriteFile(ConfigPath, writer.Bytes(), 0644)
 }
 
 func getCurrentAudioInfo() *AudioInfo {
@@ -229,26 +227,6 @@ func (info *AudioInfo) PrintAudioInfo() {
 	fmt.Println("Current audio info:", info)
 }
 
-func (info *AudioInfo) initProfile() bool {
-	// cards := ctx.GetCardList()
-	// if len(cards) == 0 {
-	// 	return false
-	// }
-
-	// profiles := cProfileInfos(cards[0].Profiles)
-	// if len(profiles) == 0 {
-	// 	return false
-	// }
-	// sort.Sort(profiles)
-	// if profiles[0].Name == info.ActiveProfile {
-	// 	return false
-	// }
-
-	// logger.Info("Init profile:", profiles[0].Name)
-	//cards[0].SetProfile(profiles[0].Name)
-	return true
-}
-
 func main() {
 	var err error
 	audioObj, err = audio.NewAudio(audioDest, audioPath)
@@ -261,7 +239,6 @@ func main() {
 	if err != nil {
 		logger.Warning("Read audio helper config failed:", err)
 		info = getCurrentAudioInfo()
-		//info.initProfile()
 		saveConfig(info)
 	} else {
 		info.Apply()
