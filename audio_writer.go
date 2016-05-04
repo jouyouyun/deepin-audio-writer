@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"dbus/com/deepin/daemon/audio"
-	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -80,6 +80,9 @@ func (info *AudioInfo) Apply() {
 	cards := ctx.GetCardList()
 	if len(cards) != 0 {
 		cards[0].SetProfile(info.ActiveProfile)
+		logger.Infof("SetProfile %v on %v\n", info.ActiveProfile, cards[0])
+	} else {
+		logger.Error("Can't find any cards")
 	}
 
 	audioObj.SetDefaultSink(info.ActiveSink)
@@ -123,7 +126,7 @@ func readConfig() (*AudioInfo, error) {
 	}
 
 	var reader = bytes.NewBuffer(content)
-	dec := gob.NewDecoder(reader)
+	dec := json.NewDecoder(reader)
 	var info AudioInfo
 	err = dec.Decode(&info)
 	if err != nil {
@@ -142,7 +145,7 @@ func saveConfig(info *AudioInfo) error {
 	defer locker.Unlock()
 
 	var writer bytes.Buffer
-	enc := gob.NewEncoder(&writer)
+	enc := json.NewEncoder(&writer)
 	err := enc.Encode(info)
 	if err != nil {
 		return err
