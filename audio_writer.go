@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"dbus/com/deepin/daemon/audio"
-	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -12,12 +12,12 @@ import (
 	"pkg.linuxdeepin.com/lib/glib-2.0"
 	"pkg.linuxdeepin.com/lib/log"
 	"pkg.linuxdeepin.com/lib/pulse"
-	"sort"
 	"sync"
+	"time"
 )
 
 const (
-	audioHelperFile = ".config/deepin_audio_helper.conf"
+	ConfigPath = "/home/deepin/.config/deepin_audio_helper.conf"
 
 	audioDest = "com.deepin.daemon.Audio"
 	audioPath = "/com/deepin/daemon/Audio"
@@ -40,7 +40,7 @@ func (*Manager) GetDBusInfo() dbus.DBusInfo {
 }
 
 type AudioInfo struct {
-	ActiveProfile    string
+	ActiveProfiles   map[string]string //map[cardName]ProfileName
 	ActiveSink       string
 	ActiveSinkPort   string
 	ActiveSource     string
@@ -77,10 +77,14 @@ func (info *AudioInfo) Update() *AudioInfo {
 }
 
 func (info *AudioInfo) Apply() {
-	cards := ctx.GetCardList()
-	if len(cards) != 0 {
-		cards[0].SetProfile(info.ActiveProfile)
+	for _, c := range ctx.GetCardList() {
+		if v, ok := info.ActiveProfiles[c.Name]; ok {
+			c.SetProfile(v)
+			logger.Infof("SetProfile %v on %v\n", v, c)
+		}
 	}
+	// NOTE: wait for profile configuring applied.
+	<-time.After(time.Second * 1)
 
 	audioObj.SetDefaultSink(info.ActiveSink)
 	sink := getDefaultSink()
@@ -100,8 +104,16 @@ func (info *AudioInfo) Apply() {
 }
 
 func (info *AudioInfo) Equal(v *AudioInfo) bool {
-	if info.ActiveProfile != v.ActiveProfile ||
-		info.ActiveSink != v.ActiveSink ||
+	if len(info.ActiveProfiles) != len(v.ActiveProfiles) {
+		return false
+	}
+	for _, p := range info.ActiveProfiles {
+		if v.ActiveProfiles[p] != p {
+			return false
+		}
+	}
+
+	if info.ActiveSink != v.ActiveSink ||
 		info.ActiveSinkPort != v.ActiveSinkPort ||
 		info.ActiveSource != v.ActiveSource ||
 		info.ActiveSourcePort != v.ActiveSourcePort ||
@@ -116,15 +128,15 @@ func readConfig() (*AudioInfo, error) {
 	locker.Lock()
 	defer locker.Unlock()
 
-	var file = path.Join(os.Getenv("HOME"), audioHelperFile)
-	content, err := ioutil.ReadFile(file)
+	content, err := ioutil.ReadFile(ConfigPath)
 	if err != nil {
 		return nil, err
 	}
 
 	var reader = bytes.NewBuffer(content)
-	dec := gob.NewDecoder(reader)
+	dec := json.NewDecoder(reader)
 	var info AudioInfo
+	info.ActiveProfiles = make(map[string]string)
 	err = dec.Decode(&info)
 	if err != nil {
 		return nil, err
@@ -142,26 +154,26 @@ func saveConfig(info *AudioInfo) error {
 	defer locker.Unlock()
 
 	var writer bytes.Buffer
-	enc := gob.NewEncoder(&writer)
+	enc := json.NewEncoder(&writer)
 	err := enc.Encode(info)
 	if err != nil {
 		return err
 	}
 
-	var file = path.Join(os.Getenv("HOME"), audioHelperFile)
-	err = os.MkdirAll(path.Dir(file), 0755)
+	err = os.MkdirAll(path.Dir(ConfigPath), 0755)
 	if err != nil {
 		return err
 	}
 
-	return ioutil.WriteFile(file, writer.Bytes(), 0644)
+	return ioutil.WriteFile(ConfigPath, writer.Bytes(), 0644)
 }
 
 func getCurrentAudioInfo() *AudioInfo {
 	var info AudioInfo
-	cards := ctx.GetCardList()
-	if len(cards) != 0 {
-		info.ActiveProfile = cards[0].ActiveProfile.Name
+	info.ActiveProfiles = make(map[string]string)
+
+	for _, card := range ctx.GetCardList() {
+		info.ActiveProfiles[card.Name] = card.ActiveProfile.Name
 	}
 
 	sink := getDefaultSink()
@@ -215,26 +227,6 @@ func (info *AudioInfo) PrintAudioInfo() {
 	fmt.Println("Current audio info:", info)
 }
 
-func (info *AudioInfo) initProfile() bool {
-	cards := ctx.GetCardList()
-	if len(cards) == 0 {
-		return false
-	}
-
-	profiles := cProfileInfos(cards[0].Profiles)
-	if len(profiles) == 0 {
-		return false
-	}
-	sort.Sort(profiles)
-	if profiles[0].Name == info.ActiveProfile {
-		return false
-	}
-
-	logger.Info("Init profile:", profiles[0].Name)
-	cards[0].SetProfile(profiles[0].Name)
-	return true
-}
-
 func main() {
 	var err error
 	audioObj, err = audio.NewAudio(audioDest, audioPath)
@@ -247,7 +239,6 @@ func main() {
 	if err != nil {
 		logger.Warning("Read audio helper config failed:", err)
 		info = getCurrentAudioInfo()
-		info.initProfile()
 		saveConfig(info)
 	} else {
 		info.Apply()
